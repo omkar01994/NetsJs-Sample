@@ -8,9 +8,11 @@ import { LoginUserDto } from '../dto/login-user.dto';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import ResponseMessage from 'src/common/enums/ResponseMessages';
+import { Logger } from 'winston';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger();
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
@@ -28,16 +30,27 @@ export class AuthService {
   }
 
   async login(loginUserDto: LoginUserDto): Promise<{ token: string }> {
-    const { email, password } = loginUserDto;
-    const user = await this.userModel.findOne({ email });
+    try {
+      const { email, password } = loginUserDto;
 
-    if (user && (await bcrypt.compare(password, user.password))) {
-      const payload = { email: user.email, sub: user._id };
-      return {
-        token: this.jwtService.sign(payload),
-      };
-    } else {
-      throw new Error(ResponseMessage.INVALID_CREDENTIALS);
+      const result: any = {};
+      const user = await this.userModel.findOne({ email });
+
+      if (user && (await bcrypt.compare(password, user.password))) {
+        const payload = { email: user.email, sub: user._id };
+        result.token = this.jwtService.sign(payload);
+        result.message = ResponseMessage.LOGIN_SUCCESS;
+      } else {
+        if (!user) {
+          this.logger.warn(
+            `Login failed for email: ${email} - Invalid credentials`,
+          );
+          result.message = ResponseMessage.INVALID_CREDENTIALS;
+        }
+      }
+      return result;
+    } catch (error) {
+      throw new Error(error?.message);
     }
   }
 }
